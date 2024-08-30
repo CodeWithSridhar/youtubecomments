@@ -14,51 +14,71 @@ def get_comments(video_id, api_key):
     # Initialize an empty list to hold comments
     comments = []
 
-    # Retrieve comments
-    request = youtube.commentThreads().list(
-        part="snippet",
-        videoId=video_id,
-        maxResults=100  # Maximum is 100
-    )
-    response = request.execute()
+    try:
+        # Retrieve comments
+        request = youtube.commentThreads().list(
+            part="snippet",
+            videoId=video_id,
+            maxResults=100  # Maximum is 100
+        )
+        response = request.execute()
 
-    while response:
-        for item in response['items']:
-            comment = item['snippet']['topLevelComment']['snippet']['textOriginal']
-            comments.append(comment)
+        while response:
+            for item in response.get('items', []):
+                comment = item['snippet']['topLevelComment']['snippet']['textOriginal']
+                comments.append(comment)
 
-        # Check if there is a next page token, indicating more comments to fetch
-        if 'nextPageToken' in response:
-            request = youtube.commentThreads().list(
-                part="snippet",
-                videoId=video_id,
-                maxResults=100,
-                pageToken=response['nextPageToken']
-            )
-            response = request.execute()
-        else:
-            break
+            # Check if there is a next page token, indicating more comments to fetch
+            if 'nextPageToken' in response:
+                request = youtube.commentThreads().list(
+                    part="snippet",
+                    videoId=video_id,
+                    maxResults=100,
+                    pageToken=response['nextPageToken']
+                )
+                response = request.execute()
+            else:
+                break
+    except Exception as e:
+        st.error(f"An error occurred while fetching comments for video ID {video_id}: {e}")
 
     return comments
 
+
 def save_comments_to_csv(comments, filename):
-    df = pd.DataFrame(comments, columns=['Comment'])
-    df.to_csv(filename, index=False)
-    return filename
+    if comments:
+        df = pd.DataFrame(comments, columns=['Comment'])
+        try:
+            df.to_csv(filename, index=False, encoding='utf-8')
+            return filename
+        except Exception as e:
+            st.error(f"Error saving to CSV: {e}")
+            return None
+    else:
+        return None
+
 
 def save_comments_to_pdf(comments, filename):
-    pdf = FPDF()
-    pdf.add_page()
+    if comments:
+        pdf = FPDF()
+        pdf.add_page()
 
-    # Specify a font path that is available on your system
-    pdf.add_font('ArialUnicodeMS', '', 'C:\\Windows\\Fonts\\ARIALUNI.TTF', uni=True)
-    pdf.set_font("ArialUnicodeMS", size=12)
+        try:
+            # Use a font that supports a wide range of characters (ensure the font is installed on your system)
+            pdf.add_font('ArialUnicodeMS', '', 'C:\\Windows\\Fonts\\ARIALUNI.TTF', uni=True)
+            pdf.set_font("ArialUnicodeMS", size=12)
 
-    for comment in comments:
-        pdf.multi_cell(0, 10, comment)
+            for comment in comments:
+                pdf.multi_cell(0, 10, comment)
 
-    pdf.output(filename)
-    return filename
+            pdf.output(filename)
+            return filename
+        except Exception as e:
+            st.error(f"Error saving to PDF: {e}")
+            return None
+    else:
+        return None
+
 
 def main():
     st.title("YouTube Comment Extractor")
@@ -79,24 +99,28 @@ def main():
                     # Save comments to CSV
                     csv_filename = f"youtube_comments_{video_id}.csv"
                     csv_file = save_comments_to_csv(comments, csv_filename)
-                    st.download_button(
-                        label=f"Download Comments as CSV for {video_id}",
-                        data=open(csv_file, "rb").read(),
-                        file_name=csv_filename,
-                        mime="text/csv"
-                    )
+                    if csv_file:
+                        with open(csv_file, "rb") as f:
+                            st.download_button(
+                                label=f"Download Comments as CSV for {video_id}",
+                                data=f.read(),
+                                file_name=csv_filename,
+                                mime="text/csv"
+                            )
 
                     # Save comments to PDF
                     pdf_filename = f"youtube_comments_{video_id}.pdf"
                     pdf_file = save_comments_to_pdf(comments, pdf_filename)
-                    st.download_button(
-                        label=f"Download Comments as PDF for {video_id}",
-                        data=open(pdf_file, "rb").read(),
-                        file_name=pdf_filename,
-                        mime="application/pdf"
-                    )
+                    if pdf_file:
+                        with open(pdf_file, "rb") as f:
+                            st.download_button(
+                                label=f"Download Comments as PDF for {video_id}",
+                                data=f.read(),
+                                file_name=pdf_filename,
+                                mime="application/pdf"
+                            )
                 else:
-                    st.error(f"No comments found for video ID: {video_id}")
+                    st.warning(f"No comments found or an error occurred for video ID: {video_id}")
         else:
             st.warning("Please enter both API Key and Video IDs.")
 
